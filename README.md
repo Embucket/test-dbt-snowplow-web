@@ -33,6 +33,42 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
    Each invocation writes one `<RUN_ID>.parquet` under that prefix. Rerun
    periodically (or via cron) to grow the input set.
 
+## Dev mode (local filesystem)
+
+For local iteration without S3 / network, set `DEV=1` and the loader reads
+parquet from `$LOCAL_PARQUET_DIR` (default `./data/snowplow/`) and issues
+`COPY INTO ... FROM 'file:///...'` instead of `s3://...`. How parquet files
+land in that directory is out of scope for this harness — assume they're
+already there.
+
+Start Rustice with its iceberg-file-catalog rooted under `./data/catalog/`,
+and bind-mount `./data` into the container at the *same host path* so the
+absolute `file://` URLs the loader emits resolve identically inside the
+container:
+
+```
+mkdir -p data/snowplow data/catalog
+docker run --name rustice --rm -p 3000:3000 \
+  -v "$(pwd)/data:$(pwd)/data:rw" \
+  -e CATALOG_URL="file://$(pwd)/data/catalog" \
+  -e BUCKET_HOST=0.0.0.0 \
+  embucket/rustice
+```
+
+`CATALOG_URL` with a `file:` scheme switches Rustice into dev-catalog mode,
+which is what enables `COPY INTO ... FROM 'file://...'`. The single `data/`
+mount holds both the parquet inputs (`data/snowplow/`) and Rustice's
+iceberg-catalog metadata (`data/catalog/`).
+
+Then:
+
+```
+cp .env.example .env   # uncomment the DEV=1 / LOCAL_PARQUET_DIR lines
+source .env
+./make.sh bootstrap
+./make.sh cycle
+```
+
 ## Cycle
 
 ```
@@ -47,6 +83,8 @@ snowplow_web output schemas and rewinds state to `null`.
 
 When the bucket has no new files, `load-next` exits 0 with a "nothing to do"
 message and `cycle` becomes idempotent.
+
+For local iteration without S3, see [Dev mode](#dev-mode-local-filesystem).
 
 ## How loading works
 

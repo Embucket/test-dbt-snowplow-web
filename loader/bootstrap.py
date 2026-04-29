@@ -2,6 +2,7 @@
 """One-shot setup: database, schema, events table, fresh state.json."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,8 @@ DDL_PATH = HERE / "events_ddl.sql"
 STATE_PATH = HERE / "state.json"
 DATABASE = "embucket"
 SCHEMA = "public_snowplow_manifest"
+
+DEV = os.environ.get("DEV", "").lower() in ("1", "true", "yes")
 
 
 def split_statements(sql: str):
@@ -33,8 +36,13 @@ def main():
     conn = connect()
     cur = conn.cursor()
 
-    print(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
-    cur.execute(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
+    if DEV:
+        # Dev-mode rustice (file/s3 catalog) auto-registers the default
+        # database and rejects CREATE DATABASE.
+        print(f"USE DATABASE {DATABASE} (DEV mode; CREATE DATABASE skipped)")
+    else:
+        print(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
+        cur.execute(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
     cur.execute(f"USE DATABASE {DATABASE}")
 
     print(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")

@@ -32,6 +32,9 @@ S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-testdata")
 S3_PREFIX = os.environ.get("S3_PREFIX", "snowplow/").lstrip("/")
 S3_REGION = os.environ.get("S3_REGION", "us-east-1")
 
+DEV = os.environ.get("DEV", "").lower() in ("1", "true", "yes")
+LOCAL_PARQUET_DIR = os.environ.get("LOCAL_PARQUET_DIR", "./data/snowplow")
+
 DATABASE = "embucket"
 SCHEMA = "public_snowplow_manifest"
 TABLE = "events"
@@ -39,7 +42,7 @@ TABLE = "events"
 STATE_PATH = Path(__file__).parent / "state.json"
 
 
-def list_parquet_keys() -> list[str]:
+def list_parquet_keys_s3() -> list[str]:
     """List every *.parquet object under s3://$S3_BUCKET/$S3_PREFIX, sorted."""
     s3 = boto3.client(
         "s3",
@@ -57,11 +60,24 @@ def list_parquet_keys() -> list[str]:
     return keys
 
 
+def list_parquet_keys_local() -> list[str]:
+    """List every *.parquet basename under LOCAL_PARQUET_DIR, sorted."""
+    return sorted(p.name for p in Path(LOCAL_PARQUET_DIR).glob("*.parquet"))
+
+
+def list_parquet_keys() -> list[str]:
+    return list_parquet_keys_local() if DEV else list_parquet_keys_s3()
+
+
 def main():
     state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
     last_key = state.get("last_loaded_key") or ""
 
-    print(f"Listing s3://{S3_BUCKET}/{S3_PREFIX} (anonymous)")
+    if DEV:
+        local_dir = Path(LOCAL_PARQUET_DIR).resolve()
+        print(f"Listing {local_dir} (DEV mode, file:// backend)")
+    else:
+        print(f"Listing s3://{S3_BUCKET}/{S3_PREFIX} (anonymous)")
     keys = list_parquet_keys()
     print(f"  found {len(keys)} parquet object(s)")
 
@@ -71,7 +87,10 @@ def main():
         return
 
     next_key = candidates[0]
-    url = f"s3://{S3_BUCKET}/{next_key}"
+    if DEV:
+        url = f"file://{Path(LOCAL_PARQUET_DIR).resolve() / next_key}"
+    else:
+        url = f"s3://{S3_BUCKET}/{next_key}"
     print(f"Next file: {url}")
 
     conn = connect()
@@ -89,7 +108,7 @@ def main():
     # optional features that read them are disabled in dbt_project.yml.
     copy_sql = (
         f"COPY INTO {TABLE} FROM '{url}' "
-        "FILE_FORMAT = (TYPE = PARQUET) "
+        "FILE_FORMAT = (TYPE = 'PARQUET') "
         "MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE"
     )
     print(f"  {copy_sql}")

@@ -1,5 +1,9 @@
--- Snowplow atomic.events canonical schema (131 columns).
+-- Snowplow atomic.events canonical schema (123 columns).
 -- Column order matches the canonical TSV/parquet layout produced by the RDB loader.
+-- Target-only columns (load_tstamp + 7 per-schema context split-outs) are
+-- omitted because Rustice's COPY INTO requires every target column to exist
+-- in the source parquet. The dbt-snowplow-web features that read those
+-- columns are disabled in dbt_project.yml.
 CREATE TABLE IF NOT EXISTS public_snowplow_manifest.events (
     app_id STRING,
     platform STRING,
@@ -128,13 +132,5 @@ CREATE TABLE IF NOT EXISTS public_snowplow_manifest.events (
     event_format STRING,
     event_version STRING,
     event_fingerprint STRING,
-    true_tstamp TIMESTAMP_NTZ,
-    load_tstamp TIMESTAMP_NTZ,
-    contexts_com_snowplowanalytics_snowplow_web_page_1 STRING,
-    unstruct_event_com_snowplowanalytics_snowplow_consent_preferences_1 STRING,
-    unstruct_event_com_snowplowanalytics_snowplow_cmp_visible_1 STRING,
-    contexts_com_iab_snowplow_spiders_and_robots_1 STRING,
-    contexts_com_snowplowanalytics_snowplow_ua_parser_context_1 STRING,
-    contexts_nl_basjes_yauaa_context_1 STRING,
-    unstruct_event_com_snowplowanalytics_snowplow_web_vitals_1 STRING
+    true_tstamp TIMESTAMP_NTZ
 );
