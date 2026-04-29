@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 PYTHON="${PYTHON:-python3}"
 export DBT_PROFILES_DIR="${DBT_PROFILES_DIR:-$(pwd)}"
@@ -47,4 +46,5 @@ clean() {
   rm -rf target dbt_packages
 }
 
-"${1:-help}"
+"$1" "${2:0}"
+

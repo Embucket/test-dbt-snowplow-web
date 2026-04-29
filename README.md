@@ -115,14 +115,23 @@ The events DDL in `loader/events_ddl.sql` mirrors the **post-RDB-loader** layout
 
 `MATCH_BY_COLUMN_NAME` reconciles the two:
 
-- **Source-only columns** (`contexts`, `unstruct_event`, `derived_contexts`) —
-  silently ignored.
-- **Target-only columns** (`load_tstamp`,
-  `contexts_com_snowplowanalytics_snowplow_web_page_1`, the IAB / UA / YAUAA /
-  consent / CWV split-outs) — stay NULL.
+- **Source-only columns** (`unstruct_event`, `derived_contexts`) — silently
+  ignored.
+- **`contexts_com_snowplowanalytics_snowplow_web_page_1`** — declared as
+  `ARRAY(OBJECT(id VARCHAR))` on the events table (matches the parquet
+  writer's `LIST<STRUCT<id:STRING>>` 1:1 and supports the `[0]:id::varchar`
+  access path the dbt-snowplow-web package compiles against). The generator
+  emits a `web_page` self-describing context for every page_view/page_ping (id
+  derived from `(domain_sessionid, pageIdx ∈ [0..4])`, an approximation of the
+  real Snowplow JS tracker which mints one UUID per page load and reuses it for
+  subsequent pings — exact correlation isn't reproducible in our stateless
+  generator). The parquet writer regex-extracts that id from the raw `contexts`
+  JSON, and COPY INTO loads it via `MATCH_BY_COLUMN_NAME`.
+- **Other target-only columns** (`load_tstamp`, the IAB / UA / YAUAA / consent
+  / CWV split-outs) — stay NULL.
 
-Because those split-out columns stay NULL, the corresponding optional features
-of the dbt-snowplow-web package would produce empty / errorful output.
+Because those remaining split-out columns stay NULL, the corresponding optional
+features of the dbt-snowplow-web package would produce empty / errorful output.
 `dbt_project.yml` therefore disables them:
 
 - `snowplow__enable_consent: false`

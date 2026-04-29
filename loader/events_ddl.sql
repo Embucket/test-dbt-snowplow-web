@@ -1,10 +1,16 @@
--- Snowplow atomic.events canonical schema (123 columns).
+-- Snowplow atomic.events canonical schema.
 -- Column order matches the canonical TSV/parquet layout produced by the RDB loader.
--- Target-only columns (load_tstamp + 7 per-schema context split-outs) are
--- omitted because Rustice's COPY INTO requires every target column to exist
--- in the source parquet. The dbt-snowplow-web features that read those
--- columns are disabled in dbt_project.yml.
-CREATE TABLE IF NOT EXISTS public_snowplow_manifest.events (
+-- The web_page split-out (contexts_com_snowplowanalytics_snowplow_web_page_1) is
+-- declared as a structured ARRAY(OBJECT(id VARCHAR)) — matches the parquet
+-- writer's LIST<STRUCT<id:STRING>> 1:1, and supports the snowflake-style
+-- `[0]:id::varchar` access path the dbt-snowplow-web package compiles against.
+-- The generator emits the web_page context in the raw `contexts` JSON; the
+-- parquet writer regex-extracts it; COPY INTO picks it up via
+-- MATCH_BY_COLUMN_NAME.
+-- The other six target-only columns (load_tstamp + IAB / UA / YAUAA / consent /
+-- CWV split-outs) remain omitted because the dbt-snowplow-web features that read
+-- them are disabled in dbt_project.yml.
+CREATE TABLE public_snowplow_manifest.events (
     app_id STRING,
     platform STRING,
     etl_tstamp TIMESTAMP_NTZ,
@@ -132,5 +138,7 @@ CREATE TABLE IF NOT EXISTS public_snowplow_manifest.events (
     event_format STRING,
     event_version STRING,
     event_fingerprint STRING,
-    true_tstamp TIMESTAMP_NTZ
+    true_tstamp TIMESTAMP_NTZ,
+    load_tstamp TIMESTAMP_NTZ,
+    contexts_com_snowplowanalytics_snowplow_web_page_1 ARRAY
 );

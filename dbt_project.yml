@@ -45,7 +45,7 @@ vars:
     # Must be <= earliest collector_tstamp in events_001.parquet, otherwise the
     # snowplow_web package will skip all data. bootstrap.py prints the min tstamp
     # of the first loaded file so you can sync this.
-    snowplow__start_date: '2025-09-01'
+    snowplow__start_date: '2026-04-01'
     snowplow__upsert_lookback_days: 60
     snowplow__user_identifiers: [{"schema": "atomic", "field": "domain_userid"}]
     snowplow__user_stitching_id: user_id
@@ -70,9 +70,9 @@ vars:
     snowplow__derived_tstamp_partitioned: true
     snowplow__query_tag: snowplow_dbt
     snowplow__entities_or_sdes: []
-    # The generator does not populate load_tstamp; the package treats it as
-    # required when enabled, so we mark it disabled (RDB Loader < 4.0 mode).
-    snowplow__enable_load_tstamp: false
+    # The parquet writer injects load_tstamp = now() at write time as a
+    # synthetic stand-in for the RDB Loader's warehouse-insert timestamp.
+    snowplow__enable_load_tstamp: true
     snowplow__consent_cmp_visible: com_snowplowanalytics_snowplow_cmp_visible_1
     snowplow__consent_preferences: com_snowplowanalytics_snowplow_consent_preferences_1
     snowplow__page_view_context: com_snowplowanalytics_snowplow_web_page_1
