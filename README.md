@@ -5,7 +5,7 @@ package against [Rustice](../rustice) — a Snowflake-protocol query engine — 
 the `dbt-snowflake` adapter.
 
 It simulates a Snowplow RDB loader by ingesting one parquet file per cycle from
-the public bucket `s3://embucket-test/data/snowplow/`. Each file in that prefix
+the public bucket `s3://embucket-testdata/snowplow/`. Each file in that prefix
 is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parquet)
 (`generate-snowplow-events`), named after the run's UTC timestamp
 (`20260428T205543Z.parquet`). Sorting by key yields chronological order.
@@ -28,7 +28,7 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
 4. **Parquet batches in S3**. Drive the generator with `S3_PARQUET_PREFIX`:
    ```
    cd ../snowplow-events-parquet
-   S3_PARQUET_PREFIX=s3://embucket-test/data/snowplow ./scripts/run-batch.sh
+   S3_PARQUET_PREFIX=s3://embucket-testdata/snowplow ./scripts/run-batch.sh
    ```
    Each invocation writes one `<RUN_ID>.parquet` under that prefix. Rerun
    periodically (or via cron) to grow the input set.
@@ -59,7 +59,7 @@ message and `cycle` becomes idempotent.
 
    ```sql
    COPY INTO public_snowplow_manifest.events
-   FROM 's3://embucket-test/data/snowplow/<key>'
+   FROM 's3://embucket-testdata/snowplow/<key>'
    FILE_FORMAT = (TYPE = PARQUET)
    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
    ```

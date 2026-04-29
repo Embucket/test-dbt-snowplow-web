@@ -2,7 +2,7 @@
 """Load the next unprocessed parquet file from the public Snowplow bucket.
 
 The generate-snowplow-events project (see ../snowplow-events-parquet) writes one
-parquet per batch when invoked with `S3_PARQUET_PREFIX=s3://embucket-test/data/snowplow`.
+parquet per batch when invoked with `S3_PARQUET_PREFIX=s3://embucket-testdata/snowplow`.
 The filename is the run's UTC timestamp, e.g. `20260428T205543Z.parquet`. Sorting
 keys lexicographically therefore yields chronological order.
 
@@ -28,8 +28,8 @@ from botocore.config import Config
 
 from _connection import connect
 
-S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-test")
-S3_PREFIX = os.environ.get("S3_PREFIX", "data/snowplow/").lstrip("/")
+S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-testdata")
+S3_PREFIX = os.environ.get("S3_PREFIX", "snowplow/").lstrip("/")
 S3_REGION = os.environ.get("S3_REGION", "us-east-1")
 
 DATABASE = "embucket"
