@@ -36,13 +36,6 @@ def main():
     conn = connect()
     cur = conn.cursor()
 
-    if DEV:
-        # Dev-mode rustice (file/s3 catalog) auto-registers the default
-        # database and rejects CREATE DATABASE.
-        print(f"USE DATABASE {DATABASE} (DEV mode; CREATE DATABASE skipped)")
-    else:
-        print(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
-        cur.execute(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
     cur.execute(f"USE DATABASE {DATABASE}")
 
     print(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
