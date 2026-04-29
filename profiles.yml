@@ -1,0 +1,16 @@
+test_snowplow_web:
+  target: rustice
+  outputs:
+    rustice:
+      type: snowflake
+      host: "{{ env_var('EMBUCKET_HOST', 'localhost') }}"
+      port: "{{ env_var('EMBUCKET_PORT', '3000') | int }}"
+      protocol: "{{ env_var('EMBUCKET_PROTOCOL', 'http') }}"
+      account: "{{ env_var('EMBUCKET_ACCOUNT', 'test') }}"
+      user: "{{ env_var('EMBUCKET_USER', 'embucket') }}"
+      password: "{{ env_var('EMBUCKET_PASSWORD', 'embucket') }}"
+      role: "{{ env_var('EMBUCKET_ROLE', 'SYSADMIN') }}"
+      database: "{{ env_var('EMBUCKET_DATABASE', 'embucket') }}"
+      warehouse: "{{ env_var('EMBUCKET_WAREHOUSE', 'COMPUTE_WH') }}"
+      schema: "{{ env_var('EMBUCKET_SCHEMA', 'public_snowplow_manifest') }}"
+      threads: 4

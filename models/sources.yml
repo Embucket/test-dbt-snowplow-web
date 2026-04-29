@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: atomic
+    database: "{{ env_var('EMBUCKET_DATABASE', 'embucket') }}"
+    schema: public_snowplow_manifest
+    tables:
+      - name: events
