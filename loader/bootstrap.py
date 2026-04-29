@@ -49,8 +49,8 @@ def main():
     (count,) = cur.fetchone()
     print(f"  events table ready, current row count = {count}")
 
-    STATE_PATH.write_text(json.dumps({"next_index": 1}) + "\n")
-    print(f"Reset {STATE_PATH.name} -> next_index=1")
+    STATE_PATH.write_text(json.dumps({"last_loaded_key": None}) + "\n")
+    print(f"Reset {STATE_PATH.name} -> last_loaded_key=null")
 
     cur.close()
     conn.close()

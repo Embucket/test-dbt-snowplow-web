@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
-"""Load the next parquet file from s3://embucket-test/data/snowplow/ into events.
+"""Load the next unprocessed parquet file from the public Snowplow bucket.
+
+The generate-snowplow-events project (see ../snowplow-events-parquet) writes one
+parquet per batch when invoked with `S3_PARQUET_PREFIX=s3://embucket-test/data/snowplow`.
+The filename is the run's UTC timestamp, e.g. `20260428T205543Z.parquet`. Sorting
+keys lexicographically therefore yields chronological order.
 
 Each invocation:
-  1. reads loader/state.json to get the next index N
-  2. issues COPY INTO public_snowplow_manifest.events FROM 's3://.../events_NNN.parquet'
-  3. prints row delta and min/max collector_tstamp
-  4. advances state.json to N+1
+  1. Lists `s3://$S3_BUCKET/$S3_PREFIX/` anonymously via boto3 UNSIGNED.
+  2. Picks the smallest *.parquet key strictly greater than state.last_loaded_key.
+  3. Issues `COPY INTO public_snowplow_manifest.events FROM 's3://...'`.
+  4. Persists the loaded key into state.json.
 
-Exits non-zero (without advancing state) if the COPY fails or finds no rows,
-so `make cycle` halts cleanly when the input is exhausted.
+Exits 0 with a "no new files" message (without advancing state) if the bucket
+holds nothing newer; this lets `make cycle` be idempotent at the end of input.
+Exits non-zero on actual failures.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
+import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
+
 from _connection import connect
 
-S3_PREFIX = "s3://embucket-test/data/snowplow"
+S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-test")
+S3_PREFIX = os.environ.get("S3_PREFIX", "data/snowplow/").lstrip("/")
+S3_REGION = os.environ.get("S3_REGION", "us-east-1")
+
 DATABASE = "embucket"
 SCHEMA = "public_snowplow_manifest"
 TABLE = "events"
@@ -25,11 +39,40 @@ TABLE = "events"
 STATE_PATH = Path(__file__).parent / "state.json"
 
 
+def list_parquet_keys() -> list[str]:
+    """List every *.parquet object under s3://$S3_BUCKET/$S3_PREFIX, sorted."""
+    s3 = boto3.client(
+        "s3",
+        region_name=S3_REGION,
+        config=Config(signature_version=UNSIGNED),
+    )
+    keys: list[str] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=S3_PREFIX):
+        for obj in page.get("Contents", []) or []:
+            key = obj["Key"]
+            if key.endswith(".parquet"):
+                keys.append(key)
+    keys.sort()
+    return keys
+
+
 def main():
-    state = json.loads(STATE_PATH.read_text())
-    n = int(state["next_index"])
-    filename = f"events_{n:03d}.parquet"
-    url = f"{S3_PREFIX}/{filename}"
+    state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
+    last_key = state.get("last_loaded_key") or ""
+
+    print(f"Listing s3://{S3_BUCKET}/{S3_PREFIX} (anonymous)")
+    keys = list_parquet_keys()
+    print(f"  found {len(keys)} parquet object(s)")
+
+    candidates = [k for k in keys if k > last_key]
+    if not candidates:
+        print(f"  no new files since last_loaded_key={last_key!r}; nothing to do")
+        return
+
+    next_key = candidates[0]
+    url = f"s3://{S3_BUCKET}/{next_key}"
+    print(f"Next file: {url}")
 
     conn = connect()
     cur = conn.cursor()
@@ -39,12 +82,16 @@ def main():
     cur.execute(f"SELECT COUNT(*) FROM {TABLE}")
     (before,) = cur.fetchone()
 
+    # MATCH_BY_COLUMN_NAME aligns parquet columns with target columns by name.
+    # Source-only columns (contexts / unstruct_event / derived_contexts in the
+    # generator output) are ignored; target-only columns (the per-schema
+    # context split-outs and load_tstamp) stay NULL — the dbt-snowplow-web
+    # optional features that read them are disabled in dbt_project.yml.
     copy_sql = (
         f"COPY INTO {TABLE} FROM '{url}' "
         "FILE_FORMAT = (TYPE = PARQUET) "
         "MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE"
     )
-    print(f"Loading file #{n}: {url}")
     print(f"  {copy_sql}")
     cur.execute(copy_sql)
 
@@ -54,19 +101,21 @@ def main():
     print(f"  rows: {before} -> {after}  (delta {delta:+})")
 
     if delta <= 0:
-        print(f"  refusing to advance state: no new rows for {filename}", file=sys.stderr)
+        print(f"  refusing to advance state: no new rows for {next_key}", file=sys.stderr)
         sys.exit(2)
 
     cur.execute(
-        f"SELECT MIN(collector_tstamp), MAX(collector_tstamp) FROM {TABLE} "
-        f"WHERE load_tstamp = (SELECT MAX(load_tstamp) FROM {TABLE})"
+        f"SELECT MIN(collector_tstamp), MAX(collector_tstamp) "
+        f"FROM {TABLE} "
+        f"WHERE collector_tstamp >= (SELECT MAX(collector_tstamp) - INTERVAL '1' DAY FROM {TABLE})"
     )
     row = cur.fetchone()
     if row and row[0] is not None:
-        print(f"  this batch collector_tstamp range: {row[0]} -> {row[1]}")
+        print(f"  recent collector_tstamp window: {row[0]} -> {row[1]}")
 
-    STATE_PATH.write_text(json.dumps({"next_index": n + 1}) + "\n")
-    print(f"  state.json -> next_index={n + 1}")
+    state["last_loaded_key"] = next_key
+    STATE_PATH.write_text(json.dumps(state) + "\n")
+    print(f"  state.json -> last_loaded_key={next_key!r}")
 
     cur.close()
     conn.close()

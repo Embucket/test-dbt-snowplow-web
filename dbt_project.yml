@@ -51,11 +51,16 @@ vars:
     snowplow__user_stitching_id: user_id
 
     snowplow__app_id: []
-    snowplow__enable_consent: true
-    snowplow__enable_cwv: true
-    snowplow__enable_iab: true
-    snowplow__enable_ua: true
-    snowplow__enable_yauaa: true
+    # The generate-snowplow-events parquet output keeps contexts as raw JSON
+    # in `contexts` / `unstruct_event` / `derived_contexts` and does NOT split
+    # them into the per-schema columns (contexts_com_snowplowanalytics_*) that
+    # the optional features below require. Disabling them keeps the run clean
+    # and exercises only the core sessions/page_views/users models.
+    snowplow__enable_consent: false
+    snowplow__enable_cwv: false
+    snowplow__enable_iab: false
+    snowplow__enable_ua: false
+    snowplow__enable_yauaa: false
     snowplow__page_view_passthroughs: []
     snowplow__session_passthroughs: []
     snowplow__ua_bot_filter: true
@@ -65,7 +70,9 @@ vars:
     snowplow__derived_tstamp_partitioned: true
     snowplow__query_tag: snowplow_dbt
     snowplow__entities_or_sdes: []
-    snowplow__enable_load_tstamp: true
+    # The generator does not populate load_tstamp; the package treats it as
+    # required when enabled, so we mark it disabled (RDB Loader < 4.0 mode).
+    snowplow__enable_load_tstamp: false
     snowplow__consent_cmp_visible: com_snowplowanalytics_snowplow_cmp_visible_1
     snowplow__consent_preferences: com_snowplowanalytics_snowplow_consent_preferences_1
     snowplow__page_view_context: com_snowplowanalytics_snowplow_web_page_1
