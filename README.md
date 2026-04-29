@@ -14,7 +14,7 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
 
 1. **Rustice running** on `localhost:3000` (separate concern, not handled here):
    ```
-   docker run --name rustice --rm -p 3000:3000 -e CATALOG_URL="s3://mybucket/" embucket/rustice
+   docker run --name rustice --rm -p 3000:3000 -e CATALOG_URL="s3://mybucket/" -e AWS_REGION=us-east-2 embucket/rustice
    ```
 2. **Python venv** with the pinned deps:
    ```

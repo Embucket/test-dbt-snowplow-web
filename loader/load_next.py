@@ -30,7 +30,7 @@ from _connection import connect
 
 S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-testdata")
 S3_PREFIX = os.environ.get("S3_PREFIX", "snowplow/").lstrip("/")
-S3_REGION = os.environ.get("S3_REGION", "us-east-1")
+S3_REGION = os.environ.get("S3_REGION", "us-east-2")
 
 DEV = os.environ.get("DEV", "").lower() in ("1", "true", "yes")
 LOCAL_PARQUET_DIR = os.environ.get("LOCAL_PARQUET_DIR", "./data/snowplow")
