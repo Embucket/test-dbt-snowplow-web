@@ -36,13 +36,13 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
 ## Cycle
 
 ```
-make bootstrap     # one time: creates DB, schema, events table, resets state
-make cycle         # tick 1: load oldest unprocessed parquet, dbt run (full build)
-make cycle         # tick 2: load next parquet, dbt run (incremental only)
-make cycle         # tick N: ...
+./make.sh bootstrap     # one time: creates DB, schema, events table, resets state
+./make.sh cycle         # tick 1: load oldest unprocessed parquet, dbt run (full build)
+./make.sh cycle         # tick 2: load next parquet, dbt run (incremental only)
+./make.sh cycle         # tick N: ...
 ```
 
-`loader/state.json` tracks the last loaded S3 key. `make reset` drops the
+`loader/state.json` tracks the last loaded S3 key. `./make.sh reset` drops the
 snowplow_web output schemas and rewinds state to `null`.
 
 When the bucket has no new files, `load-next` exits 0 with a "nothing to do"
@@ -109,7 +109,7 @@ Rustice's Snowflake compatibility.
 
 ## Verifying
 
-After `make cycle`:
+After `./make.sh cycle`:
 
 ```sql
 SELECT COUNT(*) FROM public_snowplow_manifest.events;
@@ -126,5 +126,5 @@ tick; `last_success` per model should advance after every successful tick.
 
 `snowplow__start_date` in `dbt_project.yml` (currently `2025-09-01`) must be ≤
 the earliest `collector_tstamp` in the first parquet you load, otherwise the
-package will skip all data. After the first `make cycle`, `load_next.py` prints
+package will skip all data. After the first `./make.sh cycle`, `load_next.py` prints
 the recent `collector_tstamp` window so you can adjust the var if needed.
