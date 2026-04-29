@@ -1,0 +1,13 @@
+default_connection_name = "embucket"
+
+[connections.embucket]
+account = "test"
+user = "embucket"
+password = "embucket"
+role = "SYSADMIN"
+warehouse = "COMPUTE_WH"
+database = "embucket"
+schema = "public_snowplow_manifest"
+host = "127.0.0.1"
+port = 3000
+protocol = "http"

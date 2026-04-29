@@ -29,13 +29,13 @@ load-next() {
 dbt-run() {
   deps
   dbt seed --full-refresh
-  dbt run 2>&1 | tee dbt_output.log
+  dbt run "$@" 2>&1 | tee dbt_output.log
   dbt test || true
 }
 
 cycle() {
   load-next
-  dbt-run
+  dbt-run "$@"
 }
 
 reset() {
@@ -46,5 +46,7 @@ clean() {
   rm -rf target dbt_packages
 }
 
-"$1" "${2:0}"
+cmd="$1"
+shift
+"$cmd" "$@"
 

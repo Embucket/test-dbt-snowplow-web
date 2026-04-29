@@ -81,6 +81,19 @@ source .env
 `loader/state.json` tracks the last loaded S3 key. `./make.sh reset` drops the
 snowplow_web output schemas and rewinds state to `null`.
 
+To force a full rebuild of every model (e.g. after a `reset`), pass
+`--full-refresh` through to dbt:
+
+```
+./make.sh dbt-run --full-refresh   # or: ./make.sh cycle --full-refresh
+```
+
+Do **not** invoke `dbt run --full-refresh` directly — `dbt run` does not
+materialize seeds, so the snowplow_web package's `*_dim_*` seeds (e.g.
+`snowplow_web_dim_ga4_source_categories`) will be missing and downstream
+models will fail with `table … not found`. The `dbt-run` target wraps
+`dbt seed --full-refresh` + `dbt run` together so the seeds always exist.
+
 When the bucket has no new files, `load-next` exits 0 with a "nothing to do"
 message and `cycle` becomes idempotent.
 
