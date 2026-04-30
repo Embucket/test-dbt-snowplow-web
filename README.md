@@ -12,9 +12,12 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
 
 ## Prerequisites
 
-1. **Rustice running** on `localhost:3000` (separate concern, not handled here):
+1. **Rustice running** on `localhost:3000`:
    ```
-   docker run --name rustice --rm -p 3000:3000 -e CATALOG_URL="s3://mybucket/" -e AWS_REGION=us-east-2 embucket/rustice
+   docker run --name rustice --rm -p 3000:3000 \
+     -e CATALOG_URL="s3://mybucket/" \
+     -e AWS_REGION=us-east-2 \
+     embucket/rustice
    ```
 2. **Python venv** with the pinned deps:
    ```
@@ -25,61 +28,33 @@ is one batch produced by [`../snowplow-events-parquet`](../snowplow-events-parqu
    ```
    cp .env.example .env && source .env
    ```
-4. **Parquet batches in S3**. Drive the generator with `S3_PARQUET_PREFIX`:
-   ```
-   cd ../snowplow-events-parquet
-   S3_PARQUET_PREFIX=s3://embucket-testdata/snowplow ./scripts/run-batch.sh
-   ```
-   Each invocation writes one `<RUN_ID>.parquet` under that prefix. Rerun
-   periodically (or via cron) to grow the input set.
 
-## Dev mode (local filesystem)
-
-For local iteration without S3 / network, set `DEV=1` and the loader reads
-parquet from `$LOCAL_PARQUET_DIR` (default `./data/snowplow/`) and issues
-`COPY INTO ... FROM 'file:///...'` instead of `s3://...`. How parquet files
-land in that directory is out of scope for this harness — assume they're
-already there.
-
-Start Rustice with its iceberg-file-catalog rooted under `./data/catalog/`,
-and bind-mount `./data` into the container at the *same host path* so the
-absolute `file://` URLs the loader emits resolve identically inside the
-container:
+## Quick start
 
 ```
-mkdir -p data/snowplow data/catalog
-docker run --name rustice --rm -p 3000:3000 \
-  -v "$(pwd)/data:$(pwd)/data:rw" \
-  -e CATALOG_URL="file://$(pwd)/data/catalog" \
-  -e BUCKET_HOST=0.0.0.0 \
-  embucket/rustice
-```
-
-`CATALOG_URL` with a `file:` scheme switches Rustice into dev-catalog mode,
-which is what enables `COPY INTO ... FROM 'file://...'`. The single `data/`
-mount holds both the parquet inputs (`data/snowplow/`) and Rustice's
-iceberg-catalog metadata (`data/catalog/`).
-
-Then:
-
-```
-cp .env.example .env   # uncomment the DEV=1 / LOCAL_PARQUET_DIR lines
-source .env
-./make.sh bootstrap
-./make.sh cycle
-```
-
-## Cycle
-
-```
-./make.sh bootstrap     # one time: creates DB, schema, events table, resets state
+./make.sh bootstrap     # one time: creates DB/schema/events table, resets state
 ./make.sh cycle         # tick 1: load oldest unprocessed parquet, dbt run (full build)
 ./make.sh cycle         # tick 2: load next parquet, dbt run (incremental only)
 ./make.sh cycle         # tick N: ...
 ```
 
-`loader/state.json` tracks the last loaded S3 key. `./make.sh reset` drops the
-snowplow_web output schemas and rewinds state to `null`.
+`loader/state.json` tracks the last loaded S3 key. When the bucket has no new
+files, `load-next` exits 0 with a "nothing to do" message and `cycle` becomes
+idempotent.
+
+For local iteration without S3 / network, see [Dev mode](#dev-mode-local-filesystem).
+
+## `make.sh` targets
+
+| Target      | Action |
+| ----------- | ------ |
+| `bootstrap` | Create database, schema, events table, fresh `state.json` |
+| `deps`      | `dbt deps` (installs `snowplow_web` from Hub) |
+| `load-next` | `COPY INTO events` from the next parquet on S3 (or local fs in dev mode) |
+| `dbt-run`   | `dbt deps` + `dbt seed --full-refresh` + `dbt run` + `dbt test` |
+| `cycle`     | `load-next` then `dbt-run` — one simulated loader tick |
+| `reset`     | Drop derived/scratch/manifest schemas, rewind state to `null` |
+| `clean`     | Remove `target/` and `dbt_packages/` |
 
 To force a full rebuild of every model (e.g. after a `reset`), pass
 `--full-refresh` through to dbt:
@@ -89,15 +64,10 @@ To force a full rebuild of every model (e.g. after a `reset`), pass
 ```
 
 Do **not** invoke `dbt run --full-refresh` directly — `dbt run` does not
-materialize seeds, so the snowplow_web package's `*_dim_*` seeds (e.g.
-`snowplow_web_dim_ga4_source_categories`) will be missing and downstream
-models will fail with `table … not found`. The `dbt-run` target wraps
-`dbt seed --full-refresh` + `dbt run` together so the seeds always exist.
-
-When the bucket has no new files, `load-next` exits 0 with a "nothing to do"
-message and `cycle` becomes idempotent.
-
-For local iteration without S3, see [Dev mode](#dev-mode-local-filesystem).
+materialize seeds, so the `snowplow_web` package's `*_dim_*` seeds (e.g.
+`snowplow_web_dim_ga4_source_categories`) will be missing and downstream models
+will fail with `table … not found`. The `dbt-run` target wraps `dbt seed
+--full-refresh` + `dbt run` together so the seeds always exist.
 
 ## How loading works
 
@@ -131,17 +101,17 @@ The events DDL in `loader/events_ddl.sql` mirrors the **post-RDB-loader** layout
 - **Source-only columns** (`unstruct_event`, `derived_contexts`) — silently
   ignored.
 - **`contexts_com_snowplowanalytics_snowplow_web_page_1`** — declared as
-  `ARRAY(OBJECT(id VARCHAR))` on the events table (matches the parquet
-  writer's `LIST<STRUCT<id:STRING>>` 1:1 and supports the `[0]:id::varchar`
-  access path the dbt-snowplow-web package compiles against). The generator
-  emits a `web_page` self-describing context for every page_view/page_ping (id
-  derived from `(domain_sessionid, pageIdx ∈ [0..4])`, an approximation of the
-  real Snowplow JS tracker which mints one UUID per page load and reuses it for
+  `ARRAY(OBJECT(id VARCHAR))` on the events table (matches the parquet writer's
+  `LIST<STRUCT<id:STRING>>` 1:1 and supports the `[0]:id::varchar` access path
+  the dbt-snowplow-web package compiles against). The generator emits a
+  `web_page` self-describing context for every page_view/page_ping (id derived
+  from `(domain_sessionid, pageIdx ∈ [0..4])`, an approximation of the real
+  Snowplow JS tracker which mints one UUID per page load and reuses it for
   subsequent pings — exact correlation isn't reproducible in our stateless
   generator). The parquet writer regex-extracts that id from the raw `contexts`
   JSON, and COPY INTO loads it via `MATCH_BY_COLUMN_NAME`.
-- **Other target-only columns** (`load_tstamp`, the IAB / UA / YAUAA / consent
-  / CWV split-outs) — stay NULL.
+- **Other target-only columns** (`load_tstamp`, the IAB / UA / YAUAA / consent /
+  CWV split-outs) — stay NULL.
 
 Because those remaining split-out columns stay NULL, the corresponding optional
 features of the dbt-snowplow-web package would produce empty / errorful output.
@@ -155,9 +125,9 @@ features of the dbt-snowplow-web package would produce empty / errorful output.
 - `snowplow__enable_load_tstamp: false`
 
 The harness exercises the core models — `snowplow_web_sessions`,
-`snowplow_web_page_views`, `snowplow_web_users`, and the manifest /
-incremental machinery. That's the surface most relevant to validating
-Rustice's Snowflake compatibility.
+`snowplow_web_page_views`, `snowplow_web_users`, and the manifest / incremental
+machinery. That's the surface most relevant to validating Rustice's Snowflake
+compatibility.
 
 ## How `dbt-snowplow-web` is wired
 
@@ -166,6 +136,12 @@ Rustice's Snowflake compatibility.
 - The atomic events source is declared in `models/sources.yml` as
   `source('atomic', 'events')`, mapped to `public_snowplow_manifest.events` via
   `snowplow__atomic_schema` / `snowplow__events`.
+
+> **Watch out:** `snowplow__start_date` in `dbt_project.yml` (currently
+> `2025-09-01`) must be ≤ the earliest `collector_tstamp` in the first parquet
+> you load, otherwise the package will skip all data. After the first
+> `./make.sh cycle`, `load_next.py` prints the recent `collector_tstamp` window
+> so you can adjust the var if needed.
 
 ## Verifying
 
@@ -182,9 +158,37 @@ SELECT COUNT(*) FROM public_snowplow_manifest_derived.snowplow_web_sessions;
 `events` row count should grow by exactly the loaded file's row count each
 tick; `last_success` per model should advance after every successful tick.
 
-## Important variable
+## Dev mode (local filesystem)
 
-`snowplow__start_date` in `dbt_project.yml` (currently `2025-09-01`) must be ≤
-the earliest `collector_tstamp` in the first parquet you load, otherwise the
-package will skip all data. After the first `./make.sh cycle`, `load_next.py` prints
-the recent `collector_tstamp` window so you can adjust the var if needed.
+For local iteration without S3 / network, set `DEV=1` and the loader reads
+parquet from `$LOCAL_PARQUET_DIR` (default `./data/snowplow/`) and issues
+`COPY INTO ... FROM 'file:///...'` instead of `s3://...`. How parquet files
+land in that directory is out of scope for this harness — assume they're
+already there.
+
+Start Rustice with its iceberg-file-catalog rooted under `./data/catalog/`,
+and bind-mount `./data` into the container at the *same host path* so the
+absolute `file://` URLs the loader emits resolve identically inside the
+container:
+
+```
+mkdir -p data/snowplow data/catalog
+docker run --name rustice --rm -p 3000:3000 \
+  -v "$(pwd)/data:$(pwd)/data:rw" \
+  -e CATALOG_URL="file://$(pwd)/data/catalog" \
+  -e BUCKET_HOST=0.0.0.0 \
+  embucket/rustice
+```
+
+`CATALOG_URL` with a `file:` scheme switches Rustice into dev-catalog mode,
+which is what enables `COPY INTO ... FROM 'file://...'`. The single `data/`
+mount holds both the parquet inputs (`data/snowplow/`) and Rustice's
+iceberg-catalog metadata (`data/catalog/`).
+
+Uncomment the `DEV=1` / `LOCAL_PARQUET_DIR` lines in `.env`, then:
+
+```
+source .env
+./make.sh bootstrap
+./make.sh cycle
+```
